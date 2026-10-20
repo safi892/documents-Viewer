@@ -1,0 +1,505 @@
+:root {
+  color-scheme: light dark;
+  --paper: #ffffff;
+  --ink: #1b1b1d;
+  /* Separators drawn *on* paper. Paper stays light in every theme, so this
+     stays dark in every theme. */
+  --hairline: rgba(0, 0, 0, 0.1);
+  /* Borders drawn *on* the reader's background (the gutter between cards), and
+     the muted labels that sit there. These follow the theme, not the paper: a
+     card edge has to read against the gutter, not against paper. */
+  --edge: rgba(0, 0, 0, 0.1);
+  --muted: rgba(27, 27, 29, 0.6);
+  --gutter: 16px;
+  --card-radius: 8px;
+  --page-gap: 12px;
+  --mono: ui-monospace, "SF Mono", "Roboto Mono", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Documents keep their own paper colour — inverting a docx lies about it.
+       Only the gutter follows the theme, which is exactly what keeps light
+       paper readable on a dark reader instead of dark ink on a dark page. */
+    --paper: #fbfbfb;
+    --ink: #1b1b1d;
+    --hairline: rgba(0, 0, 0, 0.1);
+    --edge: rgba(255, 255, 255, 0.16);
+    --muted: rgba(232, 232, 237, 0.62);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  /* Bottom padding keeps the last line clear of the floating zoom pill. */
+  padding: var(--gutter) var(--gutter) calc(var(--gutter) + 64px);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+#docx-styles {
+  display: none;
+}
+
+#surface {
+  display: block;
+  min-height: 1px;
+}
+
+/* ------------------------------------------------------------------ DOCX */
+
+.docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  display: block !important;
+}
+
+.docx-wrapper > section.docx {
+  background: var(--paper) !important;
+  color: var(--ink);
+  box-shadow: none !important;
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  margin: 0 auto var(--page-gap) !important;
+  padding: 24px 20px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 0 !important;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.docx-wrapper > section.docx:last-child {
+  margin-bottom: 0 !important;
+}
+
+.docx-wrapper img,
+.docx-wrapper svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.docx-wrapper table {
+  max-width: 100% !important;
+  border-collapse: collapse;
+}
+
+.docx-wrapper td,
+.docx-wrapper th {
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- SHEETS */
+
+.sheet {
+  margin: 0 0 24px;
+}
+
+.sheet:last-child {
+  margin-bottom: 0;
+}
+
+.sheet-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding-left: 2px;
+}
+
+.sheet-scroll {
+  /*
+   * Horizontal scrolling only. A viewport-height cap here (max-height: 78vh)
+   * collapses the box to nothing inside a WebView whose layout viewport is not
+   * resolved yet — vh is not a reliable unit in embedded WebViews. The WebView
+   * scrolls the document vertically for us anyway.
+   */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+}
+
+.sheet-table table {
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  min-width: 100%;
+}
+
+.sheet-table td,
+.sheet-table th {
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 5px 9px;
+  white-space: nowrap;
+  vertical-align: top;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-table tr:first-child td {
+  background: rgba(0, 0, 0, 0.035);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- SLIDES */
+
+.slide {
+  margin: 0 0 var(--page-gap);
+  padding: 0;
+}
+
+.slide:last-child {
+  margin-bottom: 0;
+}
+
+.slide-canvas {
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+  /*
+   * Do not set line-height: 0 here to collapse whitespace. It inherits into
+   * the engine's own absolutely-positioned text runs, and Chromium then lays
+   * their line boxes out upside down inside the engine's scaled container —
+   * every glyph renders mirrored and only the first line survives.
+   */
+  line-height: normal;
+}
+
+.slide-canvas .slide-container {
+  border-radius: var(--card-radius);
+  /* The engine paints its own letterbox black; the harness resizes the box to
+     the deck's real aspect, so this only shows for a moment during layout. */
+  background-color: var(--paper) !important;
+}
+
+/* ------------------------------------------------------------------- ODF */
+
+.odf-view {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  background: var(--paper);
+  margin: 0 0 var(--page-gap);
+}
+
+.odf-view:last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------ TEXT FAMILY */
+
+/* A note inside a card sits on paper. */
+.engine-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--ink) 62%, transparent);
+}
+
+/* A note beside a framed document sits on the reader's own background. */
+.engine-note.gutter {
+  color: var(--muted);
+}
+
+.engine-more {
+  margin: 4px 0 0;
+  padding: 18px 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/*
+ * Text needs a card of its own: it has no page to sit on the way a docx does,
+ * and the reader's background follows the theme — dark ink on a dark gutter is
+ * nothing at all. Paper here also matches what every other engine paints.
+ */
+.textdoc {
+  margin: 0;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  padding: 18px 16px;
+}
+
+/* Monospace run: logs, CSV, config, source. Reflowed rather than scrolled
+   sideways — a phone cannot scroll a 200-column line usefully. */
+.textdoc-pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+  color: var(--ink);
+}
+
+.textdoc-prose {
+  font-size: 17px;
+  line-height: 1.62;
+}
+
+.textdoc-body > :first-child {
+  margin-top: 0;
+}
+
+.textdoc-body > :last-child {
+  margin-bottom: 0;
+}
+
+.textdoc-body p,
+.legacy-body p {
+  margin: 0 0 0.85em;
+}
+
+.textdoc-body h1,
+.textdoc-body h2,
+.textdoc-body h3,
+.textdoc-body h4,
+.textdoc-body h5,
+.textdoc-body h6 {
+  line-height: 1.25;
+  margin: 1.5em 0 0.5em;
+  letter-spacing: -0.01em;
+}
+
+.textdoc-body h1 { font-size: 26px; }
+.textdoc-body h2 { font-size: 21px; }
+.textdoc-body h3 { font-size: 18px; }
+.textdoc-body h4,
+.textdoc-body h5,
+.textdoc-body h6 { font-size: 16px; }
+
+.textdoc-body ul,
+.textdoc-body ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.4em;
+}
+
+.textdoc-body li {
+  margin: 0 0 0.25em;
+}
+
+.textdoc-body li > p {
+  margin: 0 0 0.4em;
+}
+
+.textdoc-body blockquote {
+  margin: 0 0 0.9em;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--hairline);
+  color: color-mix(in srgb, var(--ink) 78%, transparent);
+}
+
+.textdoc-body hr {
+  height: 1px;
+  border: 0;
+  background: var(--hairline);
+  margin: 1.6em 0;
+}
+
+.textdoc-body a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
+  text-underline-offset: 2px;
+}
+
+.textdoc-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.textdoc-body code,
+.textdoc-body kbd {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.textdoc-body pre.md-code {
+  margin: 0 0 1em;
+  padding: 12px 13px;
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.textdoc-body pre.md-code code {
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.textdoc-body table {
+  width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.textdoc-body th,
+.textdoc-body td {
+  border: 1px solid var(--hairline);
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.textdoc-body th {
+  background: rgba(0, 0, 0, 0.035);
+  font-weight: 600;
+}
+
+/* Measured in em so it scales with whatever font size the paragraph has. */
+.rtf-tab {
+  display: inline-block;
+  width: 2em;
+}
+
+.rtf-page {
+  height: 1px;
+  border: 0;
+  background: var(--hairline);
+  margin: 1.4em 0;
+}
+
+/* An HTML file gets its own frame: same treatment as an ODF view. Its height
+   is measured by the harness, so no min-height here — a floor would out-vote
+   the measurement and leave a one-line file inside a tall empty box. */
+.textdoc-frame {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  background: var(--paper);
+  margin: 0;
+}
+
+/* --------------------------------------------------------------- LEGACY */
+
+/* Same reason as .textdoc: extracted text is a document with no page of its
+   own to sit on. */
+.legacy {
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  padding: 18px 16px;
+}
+
+.legacy-body {
+  font-size: 17px;
+  line-height: 1.62;
+}
+
+/* ----------------------------------------------------------------- EPUB */
+
+/*
+ * Chapters are deliberately NOT cards. A book is not a stack of documents, and
+ * a page-sized border around every chapter fights the reading flow. The frames
+ * are seamless; the gap between them marks the chapter boundary.
+ */
+.epub-chapter {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  margin: 0;
+}
+
+.book-front {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 26px 18px 30px;
+  margin: 0 0 var(--page-gap);
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+}
+
+.book-cover {
+  width: auto;
+  max-width: 100%;
+  max-height: 440px;
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+.book-title {
+  margin: 6px 0 0;
+  font-family: ui-serif, Georgia, "Noto Serif", serif;
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.book-author {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--ink) 60%, transparent);
+}
+
+/* ---------------------------------------------------------------- COMIC */
+
+.comic {
+  margin: 0;
+  padding: 0;
+}
+
+.comic-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--card-radius);
+  margin: 0 0 var(--page-gap);
+}
+
+.comic-page:last-child {
+  margin-bottom: 0;
+}

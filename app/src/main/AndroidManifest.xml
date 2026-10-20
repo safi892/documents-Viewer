@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:name=".ReaderApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Reader">
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Reader"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                "Open with" from file managers, mail clients, browsers and drives.
+
+                Every scheme and mimeType pair lives in ONE <data> element on
+                purpose: split across separate elements the filter degrades to
+                "any content:// URI", which puts the app in the chooser for files
+                it cannot read. Attributes inside a single <data> are ANDed.
+
+                text/* is safe to claim wholesale — the text engine renders any
+                character stream. Images are listed explicitly rather than as
+                image/*, because the decoder cannot handle SVG or TIFF and must
+                not be offered for them.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- Text family: any character stream. -->
+                <data android:scheme="content" android:mimeType="text/*" />
+                <data android:scheme="file" android:mimeType="text/*" />
+
+                <!-- Raster images (no SVG/TIFF: no decoder for them). -->
+                <data android:scheme="content" android:mimeType="image/jpeg" />
+                <data android:scheme="content" android:mimeType="image/png" />
+                <data android:scheme="content" android:mimeType="image/webp" />
+                <data android:scheme="content" android:mimeType="image/gif" />
+                <data android:scheme="content" android:mimeType="image/bmp" />
+                <data android:scheme="content" android:mimeType="image/x-ms-bmp" />
+                <data android:scheme="content" android:mimeType="image/avif" />
+                <data android:scheme="content" android:mimeType="image/heic" />
+                <data android:scheme="content" android:mimeType="image/heif" />
+                <data android:scheme="file" android:mimeType="image/jpeg" />
+                <data android:scheme="file" android:mimeType="image/png" />
+                <data android:scheme="file" android:mimeType="image/webp" />
+                <data android:scheme="file" android:mimeType="image/gif" />
+                <data android:scheme="file" android:mimeType="image/bmp" />
+                <data android:scheme="file" android:mimeType="image/x-ms-bmp" />
+                <data android:scheme="file" android:mimeType="image/avif" />
+                <data android:scheme="file" android:mimeType="image/heic" />
+                <data android:scheme="file" android:mimeType="image/heif" />
+
+                <!-- PDF -->
+                <data android:scheme="content" android:mimeType="application/pdf" />
+                <data android:scheme="file" android:mimeType="application/pdf" />
+
+                <!-- EPUB -->
+                <data android:scheme="content" android:mimeType="application/epub+zip" />
+                <data android:scheme="file" android:mimeType="application/epub+zip" />
+
+                <!-- Word: OOXML + legacy binary -->
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:scheme="content" android:mimeType="application/vnd.ms-word.document.macroEnabled.12" />
+                <data android:scheme="content" android:mimeType="application/msword" />
+                <data android:scheme="content" android:mimeType="application/x-msword" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:scheme="file" android:mimeType="application/vnd.ms-word.document.macroEnabled.12" />
+                <data android:scheme="file" android:mimeType="application/msword" />
+                <data android:scheme="file" android:mimeType="application/x-msword" />
+
+                <!-- Excel: OOXML, legacy binary, CSV/TSV -->
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:scheme="content" android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+                <data android:scheme="content" android:mimeType="application/vnd.ms-excel" />
+                <data android:scheme="content" android:mimeType="application/msexcel" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:scheme="file" android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+                <data android:scheme="file" android:mimeType="application/vnd.ms-excel" />
+                <data android:scheme="file" android:mimeType="application/msexcel" />
+
+                <!-- PowerPoint: OOXML only (legacy .ppt is not claimed) -->
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.slideshow" />
+                <data android:scheme="content" android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.slideshow" />
+                <data android:scheme="file" android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" />
+
+                <!-- OpenDocument -->
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.graphics" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.graphics" />
+
+                <!-- Comic archives (CBZ) -->
+                <data android:scheme="content" android:mimeType="application/vnd.comicbook+zip" />
+                <data android:scheme="content" android:mimeType="application/x-cbz" />
+                <data android:scheme="file" android:mimeType="application/vnd.comicbook+zip" />
+                <data android:scheme="file" android:mimeType="application/x-cbz" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

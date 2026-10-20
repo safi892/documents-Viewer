@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      The XML theme only owns the frame before first composition (and the system
+      splash): it keeps the window background in step with the Compose palette so
+      launch is never a flash of the wrong colour. Compose paints everything after
+      that, and values-night/themes.xml switches this to the dark palette.
+    -->
+    <style name="Theme.Reader" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:colorBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

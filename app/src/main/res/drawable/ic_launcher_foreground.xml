@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground: a sheet of paper with a turned-back corner and three
+  text rules cut out of it as holes (evenOdd), so the rules read as the accent
+  colour showing through instead of white-on-white. Alpha-only white keeps this
+  file reusable as the monochrome layer; the mark stays inside the 66dp safe
+  zone (21..87) so no launcher mask can clip it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Sheet with the folded corner notched out and the text rules punched. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M34,26 L60,26 L74,40 L74,82 L34,82 Z
+                          M60,26 L74,40 L60,40 Z
+                          M42,50 L66,50 L66,54 L42,54 Z
+                          M42,59 L66,59 L66,63 L42,63 Z
+                          M42,68 L58,68 L58,72 L42,72 Z" />
+
+    <!-- The fold, lighter than the sheet so the corner reads as turned back. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.45"
+        android:pathData="M60,26 L74,40 L60,40 Z" />
+</vector>

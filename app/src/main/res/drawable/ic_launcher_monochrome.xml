@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon layer. Android tints this by alpha, so it is the same mark with
+  every fill white: the sheet and the turn-back corner at full and 45% alpha,
+  and the text rules cut out as holes.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M34,26 L60,26 L74,40 L74,82 L34,82 Z
+                          M60,26 L74,40 L60,40 Z
+                          M42,50 L66,50 L66,54 L42,54 Z
+                          M42,59 L66,59 L66,63 L42,63 Z
+                          M42,68 L58,68 L58,72 L42,72 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.45"
+        android:pathData="M60,26 L74,40 L60,40 Z" />
+</vector>

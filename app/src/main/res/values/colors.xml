@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window background only — the Compose palette in
+         core/designsystem/theme/Color.kt is the single source of truth for
+         everything drawn afterwards. -->
+    <color name="window_background">#FFFAFAFA</color>
+</resources>
