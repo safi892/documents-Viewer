@@ -11,9 +11,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,14 +29,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -45,16 +49,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
@@ -66,6 +70,7 @@ import com.secure.reader.core.designsystem.component.rememberShimmerProgress
 import com.secure.reader.features.reader.domain.model.OpenedDocument
 import com.secure.reader.features.reader.engine.pdf.BitmapPool
 import com.secure.reader.features.reader.engine.pdf.PdfEngine
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -89,6 +94,9 @@ private const val RASTER_STEP_SLACK = 0.05f
 
 private const val DEFAULT_PAGE_ASPECT = 1f / 1.414f
 
+/** Gutter between the page edge and the screen edge at fit width. */
+private val PAGE_MARGIN = 12.dp
+
 /** Discrete detents for the +/− controls; pinch stays continuous. */
 private val ZOOM_STOPS = listOf(1f, 1.5f, 2f, 3f, 4f, 6f)
 
@@ -108,16 +116,20 @@ private val CloseDispatcher = CoroutineScope(SupervisorJob() + Dispatchers.IO.li
 /**
  * Fit-width paginated PDF reading with pinch zoom.
  *
+ * Zoom changes the page *width* in layout rather than scaling a layer: pages
+ * grow wider and taller inside the vertical list, so the document keeps its
+ * real scroll range at every zoom and native scroll physics stay intact.
+ * Horizontal pan is a draw-time translation of the page, clamped so that the
+ * paper edges stop exactly at the screen edges — the page can never be pushed
+ * off the viewport, and at fit width it is exactly centred.
+ *
  * Pages render off the main thread into viewport-sized pooled bitmaps and are
  * recycled the moment they leave the composition — memory stays flat no matter
- * the document length. Pinching scales the whole column on the GPU; while
- * zoomed, drags pan instead of scrolling.
- *
- * Resolution does not chase the gesture: pages re-render at the next
- * [RENDER_STEPS] size only once the zoom has settled ([RASTER_SETTLE_MS]). A
- * raster costs tens of milliseconds and tens of megabytes, so re-cutting it
- * mid-pinch would trade a smooth gesture for a marginally sharper frame that
- * the next pinch frame invalidates anyway.
+ * the document length. Resolution does not chase the gesture: pages re-render
+ * at the next [RENDER_STEPS] size only once the zoom has settled
+ * ([RASTER_SETTLE_MS]). A raster costs tens of milliseconds and tens of
+ * megabytes, so re-cutting it mid-pinch would trade a smooth gesture for a
+ * marginally sharper frame that the next pinch frame invalidates anyway.
  *
  * The +/− pill, double-tap and pinch all drive the same spring [scale], so the
  * gesture and the buttons never disagree about where the document sits.
@@ -183,22 +195,26 @@ private fun PdfPageList(
     val haptics = LocalHapticFeedback.current
     BoxWithConstraints(modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        val targetWidthPx = with(density) { maxWidth.toPx().toInt() }
-        val viewportWidthPx = with(density) { maxWidth.toPx() }
-        val viewportHeightPx = with(density) { maxHeight.toPx() }
+        val viewportWidthPx = constraints.maxWidth.toFloat()
+        val contentWidthPx = (viewportWidthPx - with(density) { (PAGE_MARGIN * 2).toPx() })
+            .coerceAtLeast(1f)
 
-        var scale by remember { mutableFloatStateOf(1f) }
-        var offset by remember { mutableStateOf(Offset.Zero) }
+        // Scale is layout state, not a layer transform: the page is genuinely
+        // that wide, so the horizontal pan range is derived from real edges.
+        val scale = remember { mutableFloatStateOf(1f) }
+        val panX = remember { mutableFloatStateOf(0f) }
+        val listState = rememberLazyListState()
         val scope = rememberCoroutineScope()
         var zoomJob by remember { mutableStateOf<Job?>(null) }
 
-        // The pinch callback writes `scale` every frame. Reading it directly in
+        // The pinch writes `scale` every frame. Reading it directly in
         // composition would recompose the whole list at gesture rate; these
         // derived values only notify on a real change (a threshold crossing, a
         // whole percentage, a render step), so a pinch costs a handful of
         // recompositions instead of one per displayed frame.
-        val zoomed by remember { derivedStateOf { scale > 1f + FIT_EPSILON } }
-        val percent by remember { derivedStateOf { (scale * 100).roundToInt() } }
+        val zoomed by remember { derivedStateOf { scale.floatValue > 1f + FIT_EPSILON } }
+        val percent by remember { derivedStateOf { (scale.floatValue * 100f).roundToInt() } }
+        val canZoomIn by remember { derivedStateOf { scale.floatValue < MAX_ZOOM - FIT_EPSILON } }
 
         // Rasterisation follows the zoom; it does not race it. `scale` is read
         // inside a coroutine rather than in composition, so a pinch never
@@ -207,7 +223,7 @@ private fun PdfPageList(
         // every new scale, so a continuous pinch never triggers a raster.
         var rasterStep by remember { mutableFloatStateOf(RENDER_STEPS.first()) }
         LaunchedEffect(engine) {
-            snapshotFlow { scale }.collectLatest { value ->
+            snapshotFlow { scale.floatValue }.collectLatest { value ->
                 delay(RASTER_SETTLE_MS)
                 val step = RENDER_STEPS
                     .firstOrNull { it >= value - RASTER_STEP_SLACK }
@@ -216,86 +232,130 @@ private fun PdfPageList(
             }
         }
 
-        fun clampOffset(candidate: Offset, currentScale: Float): Offset {
-            val maxX = (viewportWidthPx * (currentScale - 1f)) / 2f
-            val maxY = (viewportHeightPx * (currentScale - 1f)) / 2f
-            return Offset(
-                x = candidate.x.coerceIn(-maxX, maxX),
-                y = candidate.y.coerceIn(-maxY, maxY),
-            )
+        // The page is wider than the viewport only while zoomed; when it is,
+        // its centre may travel until an edge meets a screen edge. At fit width
+        // the allowance is zero, which pins the page back to centre.
+        fun clampPan(candidate: Float, forScale: Float): Float {
+            val maxPan = ((contentWidthPx * forScale) - viewportWidthPx) / 2f
+            return if (maxPan <= 0f) 0f else candidate.coerceIn(-maxPan, maxPan)
         }
 
-        fun zoomTo(target: Float) {
+        fun zoomTo(target: Float, focalX: Float = viewportWidthPx / 2f) {
             // A finger or a button press wins over any flight already in the air.
             zoomJob?.cancel()
+            val startScale = scale.floatValue
+            val startPan = panX.floatValue
+            if (abs(target - startScale) < 0.001f) return
+            // Keep the page point under the focal x pinned while the width
+            // changes: pan' = pan * k + anchor * (1 - k).
+            val anchor = focalX - viewportWidthPx / 2f
             zoomJob = scope.launch {
                 animate(
-                    initialValue = scale,
+                    initialValue = startScale,
                     targetValue = target,
                     animationSpec = spring(
                         dampingRatio = Spring.DampingRatioNoBouncy,
                         stiffness = Spring.StiffnessMediumLow,
                     ),
                 ) { value, _ ->
-                    scale = value
-                    offset = clampOffset(offset, value)
+                    val k = value / startScale
+                    scale.floatValue = value
+                    panX.floatValue = clampPan(startPan * k + anchor * (1f - k), value)
                 }
             }
         }
 
-        val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-            zoomJob?.cancel()
-            val newScale = (scale * zoomChange).coerceIn(1f, MAX_ZOOM)
-            if (newScale != scale) {
-                scale = newScale
-                // Pan must shrink with zoom, or the edge runs away from the finger.
-                offset = clampOffset(offset, scale)
-            }
-            if (newScale > 1f + FIT_EPSILON) {
-                offset = clampOffset(offset + panChange, scale)
-            }
+        // A rotation changes the viewport, not the intent: keep the zoom and
+        // pull the pan back inside the new page edges.
+        LaunchedEffect(viewportWidthPx) {
+            panX.floatValue = clampPan(panX.floatValue, scale.floatValue)
         }
 
-        // Double-tap toggles between fit-width and detail zoom, spring-animated.
-        val doubleTap = Modifier.pointerInput(Unit) {
+        // Double-tap toggles between fit-width and detail zoom, spring-animated
+        // around the tapped point. One pointer never consumed here, so the list
+        // scrolls exactly as it would without the gesture layer.
+        val doubleTap = Modifier.pointerInput(viewportWidthPx) {
             detectTapGestures(
-                onDoubleTap = {
+                onDoubleTap = { position ->
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    zoomTo(if (scale > 1f + FIT_EPSILON) 1f else TAP_ZOOM)
+                    if (scale.floatValue > 1f + FIT_EPSILON) {
+                        zoomTo(1f)
+                    } else {
+                        zoomTo(TAP_ZOOM, position.x)
+                    }
                 },
             )
         }
 
+        // Pinch runs in the Initial pass so it can pre-empt the list's scroll
+        // before any drag starts. It only ever consumes while two or more
+        // fingers are down (or while finishing a pinch), which is what keeps
+        // one-finger scrolling completely native.
+        val pinch = Modifier.pointerInput(viewportWidthPx, contentWidthPx) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                var zooming = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val pressed = event.changes.count { it.pressed }
+                    if (pressed == 0) break
+                    if (pressed < 2) {
+                        // One finger left after a pinch: keep the rest of this
+                        // sequence away from the list, then hand control back.
+                        if (zooming) event.changes.forEach { it.consume() }
+                        continue
+                    }
+
+                    val zoomChange = event.calculateZoom()
+                    val panChange = event.calculatePan()
+                    val centroid = event.calculateCentroid(useCurrent = false)
+                    if (centroid == Offset.Unspecified) {
+                        event.changes.forEach { it.consume() }
+                        continue
+                    }
+
+                    zoomJob?.cancel()
+                    val current = scale.floatValue
+                    val next = (current * zoomChange).coerceIn(1f, MAX_ZOOM)
+                    val k = next / current
+                    val anchor = centroid.x - viewportWidthPx / 2f
+                    scale.floatValue = next
+                    panX.floatValue = clampPan(
+                        panX.floatValue * k + anchor * (1f - k) + panChange.x,
+                        next,
+                    )
+                    // Two fingers moving up must still page down, but through
+                    // the list's own physics instead of a second scroll source.
+                    if (panChange.y != 0f) listState.dispatchRawDelta(-panChange.y)
+                    event.changes.forEach { it.consume() }
+                    zooming = true
+                }
+            }
+        }
+
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    // Pinch scales the whole column around its centre; pan translates it.
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        translationX = offset.x
-                        translationY = offset.y
-                        transformOrigin = TransformOrigin.Center
-                    }
                     .then(doubleTap)
-                    .transformable(state = transformState, canPan = { scale > 1f + FIT_EPSILON }),
+                    .then(pinch),
                 contentPadding = PaddingValues(
-                    start = 12.dp,
-                    end = 12.dp,
                     top = 14.dp,
                     // Leave the last page's number clear of the zoom pill.
                     bottom = 96.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                userScrollEnabled = !zoomed,
             ) {
                 items(pageCount, key = { it }) { index ->
                     PdfPage(
                         engine = engine,
                         index = index,
                         total = pageCount,
-                        targetWidthPx = targetWidthPx,
+                        baseWidthPx = contentWidthPx,
+                        scale = scale,
+                        panX = panX,
+                        viewportWidthPx = viewportWidthPx,
                         renderScale = rasterStep,
                     )
                 }
@@ -320,10 +380,10 @@ private fun PdfPageList(
 
             ReaderZoomBar(
                 percent = percent,
-                canZoomIn = scale < MAX_ZOOM - FIT_EPSILON,
+                canZoomIn = canZoomIn,
                 canZoomOut = zoomed,
-                onZoomIn = { zoomTo(ZOOM_STOPS.firstOrNull { it > scale + FIT_EPSILON } ?: MAX_ZOOM) },
-                onZoomOut = { zoomTo(ZOOM_STOPS.lastOrNull { it < scale - FIT_EPSILON } ?: 1f) },
+                onZoomIn = { zoomTo(ZOOM_STOPS.firstOrNull { it > scale.floatValue + FIT_EPSILON } ?: MAX_ZOOM) },
+                onZoomOut = { zoomTo(ZOOM_STOPS.lastOrNull { it < scale.floatValue - FIT_EPSILON } ?: 1f) },
                 onReset = { zoomTo(1f) },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -354,7 +414,10 @@ private fun PdfPage(
     engine: PdfEngine,
     index: Int,
     total: Int,
-    targetWidthPx: Int,
+    baseWidthPx: Float,
+    scale: State<Float>,
+    panX: State<Float>,
+    viewportWidthPx: Float,
     renderScale: Float,
     modifier: Modifier = Modifier,
 ) {
@@ -362,8 +425,8 @@ private fun PdfPage(
     val bitmap = remember { mutableStateOf<Bitmap?>(null) }
     val renderedWidth = remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(engine, index, targetWidthPx, renderScale) {
-        if (targetWidthPx <= 0) return@LaunchedEffect
+    LaunchedEffect(engine, index, baseWidthPx, renderScale) {
+        if (baseWidthPx <= 0f) return@LaunchedEffect
 
         // Resolved here, not in composition, so the box does not lay out at a
         // guessed ratio and then jump; a page reached twice reads the cache.
@@ -379,7 +442,7 @@ private fun PdfPage(
             aspect.value = ratio
         }
 
-        val requested = (targetWidthPx * renderScale).roundToInt()
+        val requested = (baseWidthPx * renderScale).roundToInt()
         val width = PdfEngine.rasterWidth(requested, ratio ?: DEFAULT_PAGE_ASPECT)
 
         // The memory ceiling collapses the top of the step ladder onto one
@@ -411,13 +474,33 @@ private fun PdfPage(
     }
 
     val ratio = aspect.value ?: DEFAULT_PAGE_ASPECT
-    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        val shape = RoundedCornerShape(4.dp)
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val elevation = if (dark) 1.dp else 2.5.dp
+    val shape = RoundedCornerShape(4.dp)
+
+    Column(
+        modifier = modifier
+            // Width is read in the measure pass, not in composition: a pinch
+            // re-lays-out the visible pages without recomposing them, and the
+            // GPU stretches the existing bitmap until the zoom settles.
+            .layout { measurable, constraints ->
+                val width = (baseWidthPx * scale.value).roundToInt().coerceAtLeast(1)
+                val placeable = measurable.measure(
+                    constraints.copy(minWidth = width, maxWidth = width),
+                )
+                layout(width, placeable.height) { placeable.place(0, 0) }
+            }
+            // Page at rest sits centred; pan then slides the paper under a
+            // fixed viewport, never the viewport across the paper.
+            .graphicsLayer {
+                val width = baseWidthPx * scale.value
+                translationX = (viewportWidthPx - width) / 2f + panX.value
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         // Paper sits on a surface: a real offset shadow lifts each page in light
         // mode, and in dark mode it reads as ambient occlusion rather than a grey
         // halo, so the page edge stays crisp without fighting the background.
-        val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-        val elevation = if (dark) 1.dp else 2.5.dp
         Box(
             modifier = Modifier
                 .fillMaxWidth()
