@@ -15,6 +15,18 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebSettingsCompat
 
 /**
+ * Page scales the reader recognises, where 1.0 is exactly fit-to-width.
+ *
+ * 100% has to mean "the paper fills the screen", not "the engine's initial
+ * scale": WebView's overview mode can start a page below 1.0, and a pill that
+ * labels that state 100% then lets the content shrink into a corner of an
+ * empty screen. These bounds are enforced in [configureSecure] for pinch and
+ * reused by the +/− controls so both paths agree.
+ */
+internal const val WEB_MIN_SCALE = 1f
+internal const val WEB_MAX_SCALE = 4f
+
+/**
  * JS -> Kotlin lifecycle channel for the office harness. WebView invokes these
  * on a binder thread; everything is re-posted to the main thread before it
  * touches Compose state.
@@ -86,14 +98,18 @@ fun WebView.configureSecure(
         allowContentAccess = false
         allowFileAccessFromFileURLs = false
         allowUniversalAccessFromFileURLs = false
-        // Pinch zoom + fling scroll, no visible +/- controls, and the page is
-        // laid out at a fixed logical width so a phone shows a readable column
-        // instead of a desktop-width page shrunk to illegibility.
+        // Pinch zoom + fling scroll, no visible +/- controls. Overview mode is
+        // deliberately off: it lets the engine pick a fit scale below 1.0, and
+        // then "100%" no longer means "fills the screen" — zooming could make
+        // the page narrower than the viewport with no way back. With it off,
+        // the harness meta viewport (width=device-width, initial-scale=1) lays
+        // the sheet out at the view width, so 1.0 is exactly fit-to-width.
         setSupportZoom(true)
         builtInZoomControls = true
         displayZoomControls = false
         setUseWideViewPort(true)
-        setLoadWithOverviewMode(true)
+        setLoadWithOverviewMode(false)
+        setInitialScale(100)
         textZoom = 100
     }
     // The documents deliberately keep their own (light) paper colour in every
@@ -110,7 +126,17 @@ fun WebView.configureSecure(
         ): WebResourceResponse? = loader.shouldInterceptRequest(request.url)?.noStore()
 
         override fun onScaleChanged(view: WebView, oldScale: Float, newScale: Float) {
-            onScale(newScale)
+            if (newScale <= 0f) return
+            // The engine can still pinch past the reader's bounds (and a stale
+            // overview scale can arrive while the document is settling). Report
+            // the clamped value and push the page back onto it, so the pill can
+            // never disagree with what is on screen.
+            val clamped = newScale.coerceIn(WEB_MIN_SCALE, WEB_MAX_SCALE)
+            if (clamped != newScale) {
+                val factor = clamped / newScale
+                view.post { runCatching { view.zoomBy(factor) } }
+            }
+            onScale(clamped)
         }
     }
     addJavascriptInterface(bridge, "AndroidBridge")

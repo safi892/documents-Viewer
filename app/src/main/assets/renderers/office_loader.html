@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- 1.0 is fit-to-width: the reader pill and the WebView share the same
+       floor, so a document can never shrink below the screen. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=4, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href="/assets/renderers/engines.css" />
   <title>Document</title>

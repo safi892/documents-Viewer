@@ -30,15 +30,17 @@ import com.secure.reader.core.designsystem.component.PageSkeleton
 import com.secure.reader.core.designsystem.component.ReaderZoomBar
 import com.secure.reader.features.reader.domain.model.OpenedDocument
 import com.secure.reader.features.reader.engine.web.DocumentBridge
+import com.secure.reader.features.reader.engine.web.WEB_MAX_SCALE
+import com.secure.reader.features.reader.engine.web.WEB_MIN_SCALE
 import com.secure.reader.features.reader.engine.web.WebAssets
 import com.secure.reader.features.reader.engine.web.configureSecure
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import org.json.JSONObject
 
 private enum class EngineStage { INIT, BUSY, READY, FAILED }
 
-/** WebView zoom bounds and per-tap step for the +/− pill. */
-private const val MAX_WEB_ZOOM = 4f
+/** Per-tap step for the +/− pill; bounds live with the WebView configuration. */
 private const val WEB_ZOOM_FACTOR = 1.25f
 private const val FIT_EPSILON = 0.01f
 
@@ -168,27 +170,35 @@ private fun WebZoomBar(
     modifier: Modifier = Modifier,
 ) {
     val percent by remember { derivedStateOf { (zoom.value * 100).roundToInt() } }
-    val canZoomIn by remember { derivedStateOf { zoom.value < MAX_WEB_ZOOM - FIT_EPSILON } }
+    val canZoomIn by remember { derivedStateOf { zoom.value < WEB_MAX_SCALE - FIT_EPSILON } }
     val canZoomOut by remember { derivedStateOf { zoom.value > 1f + FIT_EPSILON } }
 
     ReaderZoomBar(
         percent = percent,
         canZoomIn = canZoomIn,
         canZoomOut = canZoomOut,
-        onZoomIn = { webView()?.zoomByStep(WEB_ZOOM_FACTOR) },
-        onZoomOut = { webView()?.zoomByStep(1f / WEB_ZOOM_FACTOR) },
+        onZoomIn = { webView()?.zoomTo(zoom.value, zoom.value * WEB_ZOOM_FACTOR) },
+        onZoomOut = { webView()?.zoomTo(zoom.value, zoom.value / WEB_ZOOM_FACTOR) },
         // Reset reads the live scale at the moment of the tap, not a snapshot.
-        onReset = { webView()?.zoomByStep(1f / zoom.value.coerceAtLeast(1f)) },
+        onReset = { webView()?.zoomTo(zoom.value, WEB_MIN_SCALE) },
         modifier = modifier,
     )
 }
 
 /**
+ * Steps to [target] from the live [current] scale, so a tapped stop lands
+ * exactly on the percentage the pill reports next. The engine only accepts a
+ * relative factor, and the same bounds are enforced on pinch in
+ * `onScaleChanged`; this is one gesture path, not a second source of truth.
+ *
  * WebView's zoom is unsupported on some reduced configurations; a rejected
  * request must never take the reader down with it.
  */
-private fun WebView.zoomByStep(factor: Float) {
-    runCatching { zoomBy(factor) }
+private fun WebView.zoomTo(current: Float, target: Float) {
+    if (current <= 0f) return
+    val clamped = target.coerceIn(WEB_MIN_SCALE, WEB_MAX_SCALE)
+    if (abs(clamped - current) < 0.001f) return
+    runCatching { zoomBy(clamped / current) }
 }
 
 @Composable
