@@ -10,12 +10,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,9 +36,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.secure.reader.core.designsystem.component.ErrorStateBlock
+import com.secure.reader.core.designsystem.component.PageSkeleton
 import com.secure.reader.core.designsystem.component.ReaderZoomBar
-import com.secure.reader.core.designsystem.component.ShimmerBox
-import com.secure.reader.core.designsystem.component.rememberShimmerProgress
 import com.secure.reader.features.reader.domain.model.OpenedDocument
 import com.secure.reader.features.reader.engine.image.ImageDecode
 import com.secure.reader.features.reader.engine.image.ImageRenderer
@@ -230,22 +226,14 @@ private fun ZoomableImage(
 
 @Composable
 private fun ImageLoading(modifier: Modifier = Modifier) {
-    val shimmer = rememberShimmerProgress()
     Column(
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+        modifier = modifier.padding(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ShimmerBox(
-            progress = shimmer,
-            modifier = Modifier.fillMaxWidth(),
-            height = 320.dp,
-            cornerRadius = 8.dp,
-        )
-        ShimmerBox(progress = shimmer, modifier = Modifier.width(140.dp), height = 12.dp)
-        Text(
-            text = "DECODING IMAGE",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        PageSkeleton(
+            pageHeight = 320.dp,
+            label = "DECODING IMAGE",
+            lines = 0,
         )
     }
 }

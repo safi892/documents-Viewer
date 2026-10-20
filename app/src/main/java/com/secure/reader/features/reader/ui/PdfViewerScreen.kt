@@ -46,9 +46,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -56,6 +58,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
+import com.secure.reader.core.designsystem.component.Motion
+import com.secure.reader.core.designsystem.component.PageSkeleton
 import com.secure.reader.core.designsystem.component.ReaderZoomBar
 import com.secure.reader.core.designsystem.component.ShimmerBox
 import com.secure.reader.core.designsystem.component.rememberShimmerProgress
@@ -157,21 +161,16 @@ fun PdfViewerScreen(
 
 @Composable
 private fun PdfLoadingSkeleton(modifier: Modifier = Modifier) {
-    val shimmer = rememberShimmerProgress()
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        ShimmerBox(
-            progress = shimmer,
-            modifier = Modifier.fillMaxWidth(),
-            height = 260.dp,
-            cornerRadius = 8.dp,
+        PageSkeleton(
+            modifier = Modifier.fillMaxSize(),
+            pageHeight = 260.dp,
+            label = "PREPARING PAGES",
         )
-        ShimmerBox(progress = shimmer, modifier = Modifier.width(210.dp), height = 12.dp)
-        ShimmerBox(progress = shimmer, modifier = Modifier.width(150.dp), height = 12.dp)
     }
 }
 
@@ -313,8 +312,8 @@ private fun PdfPageList(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 12.dp),
-                enter = fadeIn(tween(220)),
-                exit = fadeOut(tween(220)),
+                enter = fadeIn(tween(Motion.ROUTINE_MS, easing = Motion.EaseOut)),
+                exit = fadeOut(tween(Motion.ROUTINE_MS, easing = Motion.EaseOut)),
             ) {
                 GestureHint()
             }
@@ -414,11 +413,16 @@ private fun PdfPage(
     val ratio = aspect.value ?: DEFAULT_PAGE_ASPECT
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         val shape = RoundedCornerShape(4.dp)
+        // Paper sits on a surface: a real offset shadow lifts each page in light
+        // mode, and in dark mode it reads as ambient occlusion rather than a grey
+        // halo, so the page edge stays crisp without fighting the background.
+        val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+        val elevation = if (dark) 1.dp else 2.5.dp
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(ratio)
-                .clip(shape)
+                .shadow(elevation = elevation, shape = shape, clip = true)
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
             contentAlignment = Alignment.Center,

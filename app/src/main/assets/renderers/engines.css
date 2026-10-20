@@ -10,6 +10,10 @@
      card edge has to read against the gutter, not against paper. */
   --edge: rgba(0, 0, 0, 0.1);
   --muted: rgba(27, 27, 29, 0.6);
+  /* Paper rests on the reader's surface. An offset + real blur, never a
+     zero-offset halo: on light this is a page lifted off a desk, on dark it
+     reads as ambient occlusion rather than a grey ring. */
+  --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 24px -14px rgba(0, 0, 0, 0.22);
   --gutter: 16px;
   --card-radius: 8px;
   --page-gap: 12px;
@@ -27,6 +31,7 @@
     --hairline: rgba(0, 0, 0, 0.1);
     --edge: rgba(255, 255, 255, 0.16);
     --muted: rgba(232, 232, 237, 0.62);
+    --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 28px -16px rgba(0, 0, 0, 0.7);
   }
 }
 
@@ -71,7 +76,7 @@ body {
 .docx-wrapper > section.docx {
   background: var(--paper) !important;
   color: var(--ink);
-  box-shadow: none !important;
+  box-shadow: var(--paper-shadow) !important;
   border: 1px solid var(--edge);
   border-radius: var(--card-radius);
   margin: 0 auto var(--page-gap) !important;
@@ -135,6 +140,7 @@ body {
   -webkit-overflow-scrolling: touch;
   background: var(--paper);
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
 }
 
@@ -178,6 +184,7 @@ body {
 .slide-canvas {
   background: var(--paper);
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
   overflow: hidden;
   /*
@@ -203,6 +210,7 @@ body {
   width: 100%;
   min-height: 320px;
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
   background: var(--paper);
   margin: 0 0 var(--page-gap);
@@ -247,6 +255,7 @@ body {
   margin: 0;
   background: var(--paper);
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
   padding: 18px 16px;
 }
@@ -409,6 +418,7 @@ body {
   display: block;
   width: 100%;
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
   background: var(--paper);
   margin: 0;
@@ -421,6 +431,7 @@ body {
 .legacy {
   background: var(--paper);
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
   padding: 18px 16px;
 }
@@ -455,6 +466,7 @@ body {
   margin: 0 0 var(--page-gap);
   background: var(--paper);
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
 }
 
@@ -496,6 +508,7 @@ body {
   height: auto;
   background: var(--paper);
   border: 1px solid var(--edge);
+  box-shadow: var(--paper-shadow);
   border-radius: var(--card-radius);
   margin: 0 0 var(--page-gap);
 }

@@ -1,5 +1,10 @@
 package com.secure.reader.features.reader.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,12 +20,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.secure.reader.core.designsystem.component.ErrorStateBlock
 import com.secure.reader.core.designsystem.component.Hairline
+import com.secure.reader.core.designsystem.component.Motion
+import com.secure.reader.core.designsystem.component.pressScale
 import com.secure.reader.core.file.Engine
 import com.secure.reader.core.util.formatFileSize
 
@@ -86,7 +96,16 @@ private fun ReaderTopBar(
             .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
+        val backInteraction = remember { MutableInteractionSource() }
+        val haptics = LocalHapticFeedback.current
+        IconButton(
+            onClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onBack()
+            },
+            interactionSource = backInteraction,
+            modifier = Modifier.pressScale(backInteraction, pressedScale = 0.9f),
+        ) {
             Icon(
                 Icons.AutoMirrored.Rounded.ArrowBack,
                 contentDescription = "Back to library",
@@ -102,13 +121,22 @@ private fun ReaderTopBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = if (state.document != null) titleModifier else Modifier,
             )
-            state.document?.let { document ->
-                Text(
-                    text = "${document.format.displayTag(document.fileName)}" +
-                        " · ${formatFileSize(document.sizeBytes)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // The identity line arrives a beat after the title it belongs to,
+            // so the hero hand-off reads as one object settling into place.
+            AnimatedVisibility(
+                visible = state.document != null,
+                enter = fadeIn(tween(Motion.ROUTINE_MS, easing = Motion.EaseOut)),
+                exit = fadeOut(),
+            ) {
+                val document = state.document
+                if (document != null) {
+                    Text(
+                        text = "${document.format.displayTag(document.fileName)}" +
+                            " · ${formatFileSize(document.sizeBytes)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

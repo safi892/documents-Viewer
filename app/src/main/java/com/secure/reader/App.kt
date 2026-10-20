@@ -3,6 +3,8 @@ package com.secure.reader
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.secure.reader.core.designsystem.component.LocalMotionEnabled
+import com.secure.reader.core.designsystem.component.Motion
+import com.secure.reader.core.designsystem.component.rememberMotionEnabled
 import com.secure.reader.features.library.ui.LibraryScreen
 import com.secure.reader.features.library.ui.LibraryViewModel
 import com.secure.reader.features.reader.ui.ReaderScreen
@@ -40,6 +46,9 @@ fun App(
     val libraryState by libraryViewModel.state.collectAsState()
     val readerState by readerViewModel.state.collectAsState()
     val haptics = LocalHapticFeedback.current
+    // False when the user has turned animations off system-wide: every authored
+    // duration in the app is gated on this.
+    val motion = rememberMotionEnabled()
 
     var showingReader by rememberSaveable { mutableStateOf(false) }
 
@@ -63,65 +72,82 @@ fun App(
         readerViewModel.close()
     }
 
-    // The theme owns every surface colour: without this the window background
-    // (from the XML theme) shows through and text falls back to hard black.
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-        contentColor = MaterialTheme.colorScheme.onBackground,
-    ) {
-        // The tapped row's filename flies into the reader's title bar (and back
-        // on return) — the app's one piece of showmanship, and the clearest
-        // possible signal of "this row became that document".
-        val boundsTransform = remember {
-            BoundsTransform { _, _ ->
-                spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
+    CompositionLocalProvider(LocalMotionEnabled provides motion) {
+        // The theme owns every surface colour: without this the window background
+        // (from the XML theme) shows through and text falls back to hard black.
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground,
+        ) {
+            // The tapped row's filename flies into the reader's title bar (and back
+            // on return) — the app's one piece of showmanship, and the clearest
+            // possible signal of "this row became that document".
+            val boundsTransform = remember {
+                BoundsTransform { _, _ ->
+                    spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
+                }
             }
-        }
-        SharedTransitionLayout {
-            AnimatedContent(
-                targetState = showingReader,
-                transitionSpec = {
-                    (fadeIn(tween(220)) + slideInVertically { it / 16 })
-                        .togetherWith(fadeOut(tween(180)))
-                },
-                label = "library-reader",
-            ) { inReader ->
-                // `this` is the AnimatedContentScope, which is the
-                // AnimatedVisibilityScope the shared element pairs against.
-                val titleHero = Modifier.sharedElement(
-                    sharedContentState = rememberSharedContentState(TITLE_HERO_KEY),
-                    animatedVisibilityScope = this,
-                    boundsTransform = boundsTransform,
-                )
-                if (inReader) {
-                    ReaderScreen(
-                        state = readerState,
-                        onBack = {
-                            showingReader = false
-                            readerViewModel.close()
-                        },
-                        onRetry = readerViewModel::retry,
-                        titleModifier = titleHero,
+            SharedTransitionLayout {
+                AnimatedContent(
+                    targetState = showingReader,
+                    transitionSpec = {
+                        if (!motion) {
+                            EnterTransition.None togetherWith ExitTransition.None
+                        } else {
+                            // The one authored entrance: the row's title travels to
+                            // the reader's bar while the page itself rises a hair and
+                            // resolves. Exit is faster than enter.
+                            fadeIn(
+                                tween(Motion.ENTRANCE_MS, easing = Motion.EaseOut),
+                            ) + slideInVertically(
+                                animationSpec = tween(
+                                    Motion.ENTRANCE_MS,
+                                    easing = Motion.EaseOut,
+                                ),
+                            ) { height -> height / 24 } togetherWith fadeOut(
+                                tween(Motion.ROUTINE_MS, easing = Motion.EaseOut),
+                            )
+                        }
+                    },
+                    label = "library-reader",
+                ) { inReader ->
+                    // `this` is the AnimatedContentScope, which is the
+                    // AnimatedVisibilityScope the shared element pairs against.
+                    val titleHero = Modifier.sharedElement(
+                        sharedContentState = rememberSharedContentState(TITLE_HERO_KEY),
+                        animatedVisibilityScope = this,
+                        boundsTransform = boundsTransform,
                     )
-                } else {
-                    // Only the tapped row joins the hero; every other row keeps
-                    // its plain title.
-                    val openedId = readerState.document?.id
-                    LibraryScreen(
-                        state = libraryState,
-                        onOpenFile = onOpenFile,
-                        onOpenDocument = { document ->
-                            readerViewModel.reopen(document.id)
-                        },
-                        onDeleteDocument = { document ->
-                            libraryViewModel.delete(document.id)
-                        },
-                        onRetry = libraryViewModel::retry,
-                        titleModifier = { document ->
-                            if (document.id == openedId) titleHero else Modifier
-                        },
-                    )
+                    if (inReader) {
+                        ReaderScreen(
+                            state = readerState,
+                            onBack = {
+                                showingReader = false
+                                readerViewModel.close()
+                            },
+                            onRetry = readerViewModel::retry,
+                            titleModifier = titleHero,
+                        )
+                    } else {
+                        // Only the tapped row joins the hero; every other row keeps
+                        // its plain title.
+                        val openedId = readerState.document?.id
+                        LibraryScreen(
+                            state = libraryState,
+                            onOpenFile = onOpenFile,
+                            onOpenDocument = { document ->
+                                readerViewModel.reopen(document.id)
+                            },
+                            onDeleteDocument = { document ->
+                                libraryViewModel.delete(document.id)
+                            },
+                            onRetry = libraryViewModel::retry,
+                            titleModifier = { document ->
+                                if (document.id == openedId) titleHero else Modifier
+                            },
+                        )
+                    }
                 }
             }
         }

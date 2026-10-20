@@ -1,10 +1,7 @@
 package com.secure.reader.features.library.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
@@ -23,11 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.secure.reader.core.designsystem.component.Hairline
 import com.secure.reader.core.designsystem.component.pressScale
 import com.secure.reader.core.util.formatFileSize
 import com.secure.reader.features.library.domain.model.RecentDocument
@@ -35,6 +30,24 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * `SimpleDateFormat` is not thread-safe, so each thread gets its own. Rows are
+ * composed on the main thread, and this keeps scrolling through a long library
+ * from allocating a formatter per row.
+ */
+private val DateFormat = ThreadLocal.withInitial {
+    SimpleDateFormat("d MMM yyyy", Locale.getDefault())
+}
+
+/**
+ * One document: a mono format tag, the name, and the two facts that actually
+ * help identify a file (size, when it was last opened).
+ *
+ * The tag is set in the accent colour instead of a bordered chip — a chip per row
+ * is a box per row, and the colour carries the identity in less space. The
+ * separator is drawn by this row rather than composed as a sibling, which saves a
+ * layout node per document.
+ */
 @Composable
 fun RecentDocumentRow(
     document: RecentDocument,
@@ -46,18 +59,33 @@ fun RecentDocumentRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val dateLabel = remember(document.lastAccessed) {
-        SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(document.lastAccessed))
+        DateFormat.get().format(Date(document.lastAccessed))
     }
+    val rule = MaterialTheme.colorScheme.outlineVariant
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .pressScale(interactionSource)
-            .padding(vertical = 14.dp),
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                val y = size.height - stroke / 2f
+                drawLine(rule, Offset(0f, y), Offset(size.width, y), stroke)
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .pressScale(interactionSource, pressedScale = 0.985f)
+            .padding(vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FormatGlyph(tag = document.format.displayTag(document.fileName))
+        Text(
+            text = document.format.displayTag(document.fileName),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.width(40.dp),
+        )
 
         Column(
             modifier = Modifier
@@ -73,7 +101,7 @@ fun RecentDocumentRow(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = titleModifier,
             )
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(5.dp))
             Text(
                 text = "${formatFileSize(document.sizeBytes)} · $dateLabel",
                 style = MaterialTheme.typography.labelSmall,
@@ -89,25 +117,5 @@ fun RecentDocumentRow(
                 modifier = Modifier.size(16.dp),
             )
         }
-    }
-    Hairline()
-}
-
-@Composable
-private fun FormatGlyph(tag: String, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(10.dp)
-    Box(
-        modifier = modifier
-            .size(44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = tag,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

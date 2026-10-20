@@ -1,29 +1,19 @@
 package com.secure.reader.features.reader.ui
 
 import android.webkit.WebView
-import androidx.compose.animation.core.EaseInOutCubic
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -31,14 +21,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.secure.reader.core.designsystem.component.ErrorStateBlock
+import com.secure.reader.core.designsystem.component.Motion
+import com.secure.reader.core.designsystem.component.PageSkeleton
 import com.secure.reader.core.designsystem.component.ReaderZoomBar
-import com.secure.reader.core.designsystem.component.ShimmerBox
-import com.secure.reader.core.designsystem.component.rememberShimmerProgress
 import com.secure.reader.features.reader.domain.model.OpenedDocument
 import com.secure.reader.features.reader.engine.web.DocumentBridge
 import com.secure.reader.features.reader.engine.web.WebAssets
@@ -121,31 +110,41 @@ fun OfficeViewerScreen(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            when (stage.value) {
-                EngineStage.INIT, EngineStage.BUSY -> EngineLoading(
-                    document = document,
-                    stageLabel = stageLabel.value,
-                )
-                EngineStage.FAILED -> Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(20.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    ErrorStateBlock(
-                        title = "Rendering failed",
-                        body = "The ${document.format.tag} engine could not render this file." +
-                            (errorMessage.value?.let { "\n\n$it" } ?: ""),
+            // The skeleton is a veil over a page that is already painting. Cross-
+            // fading it out (instead of removing it) is the difference between the
+            // document "appearing" and the document "settling" — and it costs one
+            // layer for one routine duration.
+            val loading = stage.value == EngineStage.INIT || stage.value == EngineStage.BUSY
+            AnimatedVisibility(
+                visible = loading || stage.value == EngineStage.FAILED,
+                enter = EnterTransition.None,
+                exit = fadeOut(tween(Motion.ROUTINE_MS, easing = Motion.EaseOut)),
+            ) {
+                when (stage.value) {
+                    EngineStage.FAILED -> Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .padding(20.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        ErrorStateBlock(
+                            title = "Rendering failed",
+                            body = "The ${document.format.tag} engine could not render this file." +
+                                (errorMessage.value?.let { "\n\n$it" } ?: ""),
+                        )
+                    }
+                    else -> EngineLoading(
+                        document = document,
+                        stageLabel = stageLabel.value,
                     )
                 }
-                EngineStage.READY -> ReaderZoomBar(
-                    percent = (zoom.value * 100).roundToInt(),
-                    canZoomIn = zoom.value < MAX_WEB_ZOOM - FIT_EPSILON,
-                    canZoomOut = zoom.value > 1f + FIT_EPSILON,
-                    onZoomIn = { webViewRef.value?.zoomByStep(WEB_ZOOM_FACTOR) },
-                    onZoomOut = { webViewRef.value?.zoomByStep(1f / WEB_ZOOM_FACTOR) },
-                    onReset = { webViewRef.value?.zoomByStep(1f / zoom.value) },
+            }
+
+            if (stage.value == EngineStage.READY) {
+                WebZoomBar(
+                    zoom = zoom,
+                    webView = { webViewRef.value },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -154,6 +153,34 @@ fun OfficeViewerScreen(
             }
         }
     }
+}
+
+/**
+ * The zoom pill reads the live page scale through `derivedStateOf`, and only
+ * this composable subscribes. The scale is written on every pinch frame by
+ * `onScaleChanged`; reading it directly where the WebView lives would recompose
+ * the reader -- AndroidView included -- at gesture rate.
+ */
+@Composable
+private fun WebZoomBar(
+    zoom: State<Float>,
+    webView: () -> WebView?,
+    modifier: Modifier = Modifier,
+) {
+    val percent by remember { derivedStateOf { (zoom.value * 100).roundToInt() } }
+    val canZoomIn by remember { derivedStateOf { zoom.value < MAX_WEB_ZOOM - FIT_EPSILON } }
+    val canZoomOut by remember { derivedStateOf { zoom.value > 1f + FIT_EPSILON } }
+
+    ReaderZoomBar(
+        percent = percent,
+        canZoomIn = canZoomIn,
+        canZoomOut = canZoomOut,
+        onZoomIn = { webView()?.zoomByStep(WEB_ZOOM_FACTOR) },
+        onZoomOut = { webView()?.zoomByStep(1f / WEB_ZOOM_FACTOR) },
+        // Reset reads the live scale at the moment of the tap, not a snapshot.
+        onReset = { webView()?.zoomByStep(1f / zoom.value.coerceAtLeast(1f)) },
+        modifier = modifier,
+    )
 }
 
 /**
@@ -166,7 +193,6 @@ private fun WebView.zoomByStep(factor: Float) {
 
 @Composable
 private fun EngineLoading(document: OpenedDocument, stageLabel: String) {
-    val shimmer = rememberShimmerProgress()
     val idleLabel = when (document.format) {
         com.secure.reader.core.file.Format.ODF -> "WASM ENGINE · FIRST RUN COMPILES THE MODULE"
         else -> "ENGINE · ${document.format.tag}"
@@ -176,58 +202,13 @@ private fun EngineLoading(document: OpenedDocument, stageLabel: String) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(20.dp),
+            .padding(horizontal = 20.dp, vertical = 18.dp),
         contentAlignment = Alignment.TopStart,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            ShimmerBox(
-                progress = shimmer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp),
-                cornerRadius = 6.dp,
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BreathingDot()
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            ShimmerBox(progress = shimmer, modifier = Modifier.width(220.dp), height = 12.dp)
-            ShimmerBox(progress = shimmer, modifier = Modifier.width(160.dp), height = 12.dp)
-        }
+        PageSkeleton(
+            modifier = Modifier.fillMaxSize(),
+            pageHeight = 300.dp,
+            label = label,
+        )
     }
-}
-
-/**
- * The loading indicator's only real signal that something is alive: a soft
- * scale-and-fade pulse on the status dot. Costs one infinite transition and
- * reads as "working" far better than a bare spinner.
- */
-@Composable
-private fun BreathingDot(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "dot")
-    val pulse by transition.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(760, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "dotPulse",
-    )
-    Box(
-        modifier = modifier
-            .size(6.dp)
-            .graphicsLayer {
-                scaleX = pulse
-                scaleY = pulse
-                alpha = pulse
-            }
-            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
-    )
 }
